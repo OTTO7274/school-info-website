@@ -23,6 +23,7 @@
   const STORAGE_KEY = 'umatronix.catalog.v2';
   const AUTH_KEY = 'umatronix.auth.v1';
   const USER_PROFILE_KEY = 'umatronix.user.profile.v1';
+  const BACKGROUND_KEY = 'umatronix.background.v1';
   const MAX_IMAGE_SIZE_BYTES = 500 * 1024;
 
   const safe = value => String(value).replace(/[&<>"']/g, c => ({
@@ -50,6 +51,30 @@
   function getCurrentCatalogKey() {
     const email = normalizeEmail(getLoggedUser());
     return email ? `umatronix.catalog.${email.replace(/[^a-z0-9]/g, '_')}` : STORAGE_KEY;
+  }
+
+  function loadBackground() {
+    try {
+      const image = localStorage.getItem(BACKGROUND_KEY);
+      if (image) {
+        document.body.style.backgroundImage = `url("${image}")`;
+      }
+    } catch {}
+  }
+
+  function setBackgroundFromFile(file) {
+    if (!file || typeof file !== 'object') return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const src = String(reader.result || '');
+        if (!src) return;
+        localStorage.setItem(BACKGROUND_KEY, src);
+        document.body.style.backgroundImage = `url("${src}")`;
+      } catch {}
+    };
+    reader.readAsDataURL(file);
   }
 
   function ensureStyles() {
@@ -676,6 +701,19 @@
     closeConfirm();
   });
 
+  $('changeBackgroundBtn')?.addEventListener('click', () => {
+    $('backgroundInput')?.click();
+  });
+
+  $('backgroundInput')?.addEventListener('change', event => {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    if (!file) return;
+
+    setBackgroundFromFile(file);
+    input.value = '';
+  });
+
   [addDialog, listDialog, confirmDialog].forEach(dialog => {
     if (!dialog) return;
     dialog.addEventListener('click', event => {
@@ -685,5 +723,6 @@
 
   ensureStyles();
   ensureAuthUi();
+  loadBackground();
   render();
 })();
