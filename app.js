@@ -1,460 +1,111 @@
 (() => {
   'use strict';
-
-  const categories = [
-    'Celulares','Computación','Audio y TV','Videojuegos','Electrodomésticos','Hogar','Cocina','Muebles',
-    'Moda Mujer','Moda Hombre','Calzado','Accesorios','Deportes','Belleza','Salud y Bienestar',
-    'Juguetes','Bebés','Mascotas','Libros','Papelería','Herramientas','Automotriz','Jardín',
-    'Supermercado','Instrumentos'
-  ];
-
+  const categories = ["Celulares","Computación","Audio y TV","Videojuegos","Electrodomésticos","Hogar","Cocina","Muebles","Moda Mujer","Moda Hombre","Calzado","Accesorios","Deportes","Belleza","Salud y Bienestar","Juguetes","Bebés","Mascotas","Libros","Papelería","Herramientas","Automotriz","Jardín","Supermercado","Instrumentos"];
   const $ = id => document.getElementById(id);
-  const grid = $('itemsGrid');
-  const empty = $('emptyState');
-  const addDialog = $('addDialog');
-  const listDialog = $('listDialog');
-  const confirmDialog = $('confirmDialog');
-  const select = $('elementCategory');
 
-  let activeCategory = 'Todas';
-  let deleteTarget = null;
-  let pendingProductImage = '';
-
-  const STORAGE_KEY = 'umatronix.catalog.v2';
-  const AUTH_KEY = 'umatronix.auth.v1';
-  const USER_PROFILE_KEY = 'umatronix.user.profile.v1';
-  const BACKGROUND_KEY = 'umatronix.background.v1';
-  const MAX_IMAGE_SIZE_BYTES = 500 * 1024;
-
-  const safe = value => String(value).replace(/[&<>"']/g, c => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  }[c]));
-
-  function normalizeEmail(email) {
-    return String(email || '').trim().toLowerCase();
-  }
-
-  function getLoggedUser() {
+  // Cambio de fondo: conserva la imagen elegida en este navegador.
+  const BACKGROUND_STORAGE_KEY = 'umatronix.background.v1';
+  const backgroundInput = $('backgroundInput');
+  const changeBackgroundBtn = $('changeBackgroundBtn');
+  function applySavedBackground(){
     try {
-      const raw = localStorage.getItem(AUTH_KEY) || '';
-      const profile = JSON.parse(localStorage.getItem(USER_PROFILE_KEY) || 'null');
-      return normalizeEmail(raw || (profile && profile.email) || '');
-    } catch {
-      return '';
-    }
-  }
-
-  function getCurrentCatalogKey() {
-    const email = normalizeEmail(getLoggedUser());
-    return email ? `umatronix.catalog.${email.replace(/[^a-z0-9]/g, '_')}` : STORAGE_KEY;
-  }
-
-  function loadBackground() {
-    try {
-      const image = localStorage.getItem(BACKGROUND_KEY);
-      if (image) {
-        document.body.style.backgroundImage = `url("${image}")`;
+      const savedBackground = localStorage.getItem(BACKGROUND_STORAGE_KEY);
+      if (savedBackground && savedBackground.startsWith('data:image/')) {
+        document.body.style.backgroundImage = `url("${savedBackground}")`;
       }
-    } catch {}
-  }
-
-  function setBackgroundFromFile(file) {
-    if (!file || typeof file !== 'object') return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const src = String(reader.result || '');
-        if (!src) return;
-        localStorage.setItem(BACKGROUND_KEY, src);
-        document.body.style.backgroundImage = `url("${src}")`;
-      } catch {}
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function ensureStyles() {
-    if (document.getElementById('umatronix-ux-styles')) return;
-
-    const style = document.createElement('style');
-    style.id = 'umatronix-ux-styles';
-    style.textContent = `
-      .product-photo-field {
-        display: grid;
-        gap: 10px;
-        margin: 18px 0 12px;
-      }
-      .photo-label {
-        font-size: 0.88rem;
-        font-weight: 700;
-        color: #2f3b52;
-      }
-      .product-photo-preview {
-        width: 100%;
-        max-height: 180px;
-        object-fit: cover;
-        border-radius: 14px;
-        border: 1px solid rgba(69, 92, 145, 0.2);
-        background: linear-gradient(135deg, #f2f6ff, #eef1f6);
-      }
-      .hidden {
-        display: none !important;
-      }
-      .item-photo {
-        width: 100%;
-        height: 150px;
-        overflow: hidden;
-        border-radius: 12px 12px 0 0;
-        background: linear-gradient(135deg, #eff4ff, #edf3f5);
-      }
-      .item-photo img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .item-photo-empty {
-        display: grid;
-        place-items: center;
-        width: 100%;
-        height: 100%;
-        font-size: 0.8rem;
-        color: #56657f;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .auth-button {
-        border: 1px solid rgba(62, 90, 160, 0.25);
-        background: white;
-        color: #243b64;
-        padding: 10px 14px;
-        border-radius: 999px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      .auth-button:hover {
-        background: #f3f7ff;
-      }
-      .auth-dialog {
-        width: min(430px, calc(100vw - 24px));
-        margin: auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        border-radius: 18px;
-        padding: 0;
-        box-shadow: 0 20px 45px rgba(20, 36, 62, 0.18);
-      }
-      .auth-dialog[open] {
-        display: flex;
-      }
-      .auth-dialog::backdrop {
-        background: rgba(16, 25, 38, 0.45);
-      }
-      .auth-card {
-        padding: 24px;
-      }
-      .auth-card h2 {
-        margin: 0 0 8px;
-        font-size: 1.3rem;
-      }
-      .auth-card p {
-        margin: 0 0 16px;
-        color: #52627c;
-      }
-      .auth-card form {
-        display: grid;
-        gap: 12px;
-      }
-      .auth-card input {
-        width: 100%;
-        padding: 12px 14px;
-        border-radius: 12px;
-        border: 1px solid rgba(74, 93, 134, 0.25);
-        font: inherit;
-      }
-      .auth-card-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-      }
-      .auth-card .secondary {
-        background: #ecf2ff;
-        color: #2a3d69;
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  function setLoggedUser(email) {
-    const normalized = normalizeEmail(email);
-    try {
-      if (normalized) {
-        localStorage.setItem(AUTH_KEY, normalized);
-        localStorage.setItem(USER_PROFILE_KEY, JSON.stringify({ email: normalized, updatedAt: Date.now() }));
-      } else {
-        localStorage.removeItem(AUTH_KEY);
-        localStorage.removeItem(USER_PROFILE_KEY);
-      }
-    } catch {}
-
-    items = loadItems();
-    renderAuthState();
-    render();
-  }
-
-  function ensureAuthUi() {
-    const target = document.querySelector('header') || document.body;
-    let loginButton = $('loginButton');
-
-    if (!loginButton) {
-      loginButton = document.createElement('button');
-      loginButton.id = 'loginButton';
-      loginButton.type = 'button';
-      loginButton.className = 'auth-button';
-      target.appendChild(loginButton);
-    }
-
-    let authDialog = $('authDialog');
-    if (!authDialog) {
-      authDialog = document.createElement('dialog');
-      authDialog.id = 'authDialog';
-      authDialog.className = 'auth-dialog';
-      authDialog.innerHTML = `
-        <div class="auth-card">
-          <h2>Inicia sesión</h2>
-          <p>Usa tu correo electrónico para gestionar tu catálogo.</p>
-          <form id="loginForm" novalidate>
-            <input id="loginEmail" type="email" placeholder="correo@ejemplo.com" autocomplete="email" required>
-            <div class="auth-card-actions">
-              <button type="button" class="small-action secondary" id="closeAuth">Cancelar</button>
-              <button type="submit" class="small-action" id="submitAuth">Entrar</button>
-            </div>
-          </form>
-        </div>
-      `;
-      document.body.appendChild(authDialog);
-    }
-
-    const loginForm = $('loginForm');
-    const loginEmail = $('loginEmail');
-
-    if (loginForm && loginEmail) {
-      loginForm.addEventListener('submit', event => {
-        event.preventDefault();
-        const email = normalizeEmail(loginEmail.value);
-        const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-        if (!isValid) {
-          loginEmail.focus();
-          loginEmail.setCustomValidity('Escribe un correo válido.');
-          loginEmail.reportValidity();
-          return;
-        }
-
-        loginEmail.setCustomValidity('');
-        setLoggedUser(email);
-        authDialog.close();
-      });
-
-      $('closeAuth')?.addEventListener('click', () => authDialog.close());
-      authDialog.addEventListener('click', event => {
-        if (event.target === authDialog) authDialog.close();
-      });
-    }
-
-    renderAuthState();
-    return { loginButton, authDialog };
-  }
-
-  function renderAuthState() {
-    const loginButton = $('loginButton');
-    if (!loginButton) return;
-
-    const email = getLoggedUser();
-    loginButton.textContent = email ? `Conectado: ${email}` : 'Iniciar sesión';
-    loginButton.title = email ? 'Cerrar sesión' : 'Iniciar sesión con correo';
-
-    loginButton.onclick = () => {
-      const activeEmail = getLoggedUser();
-      if (activeEmail) {
-        const wantLogout = window.confirm('¿Quieres cerrar sesión?');
-        if (wantLogout) setLoggedUser('');
-        return;
-      }
-
-      const dialog = $('authDialog');
-      if (dialog) {
-        const input = $('loginEmail');
-        if (input) {
-          input.value = '';
-          input.setCustomValidity('');
-        }
-        dialog.showModal();
-      }
-    };
-  }
-
-  function loadItems() {
-    const catalogKey = getCurrentCatalogKey();
-    try {
-      const value = JSON.parse(localStorage.getItem(catalogKey) || localStorage.getItem(STORAGE_KEY) || '[]');
-      return Array.isArray(value)
-        ? value.filter(x => x && typeof x.name === 'string' && typeof x.category === 'string').map(x => ({
-            id: String(x.id || makeId()),
-            name: x.name,
-            category: x.category,
-            inList: Boolean(x.inList),
-            image: typeof x.image === 'string' ? x.image : ''
-          }))
-        : [];
-    } catch {
-      return [];
-    }
-  }
-
-  let items = loadItems();
-
-  function makeId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  }
-
-  function persist() {
-    try {
-      const key = getCurrentCatalogKey();
-      localStorage.setItem(key, JSON.stringify(items));
-      if (!getLoggedUser()) localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch (error) {
-      console.error('No se pudo guardar en localStorage:', error);
-      window.alert('La imagen es demasiado grande o el almacenamiento está lleno. Usa una imagen más pequeña o elimina elementos guardados.');
+      // Si el navegador bloquea el almacenamiento, la página sigue funcionando.
     }
   }
-
-  categories.forEach(name => {
-    const option = document.createElement('option');
-    option.value = name;
-    option.textContent = name;
-    if (select) select.appendChild(option);
-  });
-
-  function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      if (!file || typeof file !== 'object' || !('name' in file) || !('size' in file)) {
-        reject(new Error('No se seleccionó un archivo válido.'));
+  if (changeBackgroundBtn && backgroundInput) {
+    changeBackgroundBtn.addEventListener('click', () => backgroundInput.click());
+    backgroundInput.addEventListener('change', event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('Selecciona un archivo de imagen válido.');
+        backgroundInput.value = '';
         return;
       }
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        reject(new Error('La imagen supera el tamaño permitido (máximo 500 KB).'));
-        return;
-      }
-
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+      reader.addEventListener('load', () => {
+        const src = String(reader.result || '');
+        if (!src.startsWith('data:image/')) return;
+        document.body.style.backgroundImage = `url("${src}")`;
+        try {
+          localStorage.setItem(BACKGROUND_STORAGE_KEY, src);
+        } catch (error) {
+          alert('El fondo se aplicó, pero el navegador no pudo guardarlo para la próxima visita. Prueba con una imagen más pequeña.');
+        }
+      });
+      reader.addEventListener('error', () => alert('No se pudo leer la imagen. Intenta con otra.'));
       reader.readAsDataURL(file);
+      backgroundInput.value = '';
     });
   }
+  applySavedBackground();
+  const grid = $('itemsGrid'), empty = $('emptyState'), addDialog = $('addDialog'), listDialog = $('listDialog'), confirmDialog = $('confirmDialog');
+  const select = $('elementCategory');
+  const imageInput = $('elementImage');
+  const imagePreviewWrap = $('imagePreviewWrap');
+  const imagePreview = $('imagePreview');
+  const removeImageBtn = $('removeImageBtn');
+  let activeCategory = 'Todas';
+  let deleteTarget = null;
+  let draftImage = '';
+  const STORAGE_KEY = 'umatronix.catalog.v2';
+  const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
 
-  function clearPhotoSelection() {
-    pendingProductImage = '';
-    const preview = $('productImagePreview');
-    const input = $('productImageInput');
-
-    if (preview) {
-      preview.removeAttribute('src');
-      preview.classList.add('hidden');
-    }
-
-    if (input) input.value = '';
-  }
-
-  function bindPhotoInput() {
-    const input = $('productImageInput');
-    if (!input) return;
-
-    input.onchange = async event => {
-      const file = event.target && event.target.files ? event.target.files[0] : null;
-      const preview = $('productImagePreview');
-
-      if (!file) {
-        clearPhotoSelection();
-        return;
-      }
-
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        pendingProductImage = dataUrl;
-
-        if (preview) {
-          preview.src = dataUrl;
-          preview.classList.remove('hidden');
-        }
-      } catch (error) {
-        console.error(error);
-        clearPhotoSelection();
-      }
-    };
-  }
-
-  function ensurePhotoControls() {
-    const addForm = $('addForm');
-    if (!addForm) return;
-
-    const existing = addForm.querySelector('#productImageInput');
-    if (existing) {
-      bindPhotoInput();
+  function setDraftImage(src){
+    draftImage = src || '';
+    if (!draftImage) {
+      imageInput.value = '';
+      imagePreviewWrap.hidden = true;
+      if (imagePreview) imagePreview.removeAttribute('src');
       return;
     }
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'product-photo-field';
-    wrapper.innerHTML = `
-      <label class="photo-label" for="productImageInput">Foto del producto</label>
-      <input id="productImageInput" name="productImage" type="file" accept="image/*">
-      <img id="productImagePreview" class="product-photo-preview hidden" alt="Vista previa del producto">
-    `;
-
-    const submitButton = addForm.querySelector('button[type="submit"]');
-    if (submitButton && submitButton.parentNode === addForm) {
-      addForm.insertBefore(wrapper, submitButton);
-    } else {
-      addForm.appendChild(wrapper);
-    }
-
-    bindPhotoInput();
+    imagePreviewWrap.hidden = false;
+    imagePreview.src = draftImage;
+    imagePreview.alt = 'Vista previa del producto';
   }
 
-  function render() {
+  function loadItems(){
+    try { const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); return Array.isArray(value) ? value.filter(x => x && typeof x.name === 'string' && typeof x.category === 'string').map(x => ({id:String(x.id || makeId()),name:x.name,category:x.category,inList:Boolean(x.inList),image:typeof x.image === 'string' ? x.image : ''})) : []; }
+    catch { return []; }
+  }
+  let items = loadItems();
+  function makeId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function persist(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* La página sigue funcionando si el navegador bloquea el almacenamiento. */ } }
+  categories.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; select.appendChild(option); });
+
+  imageInput.addEventListener('change', event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Selecciona un archivo de imagen válido.');
+      imageInput.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const src = String(reader.result || '');
+      if (src.startsWith('data:image/')) {
+        setDraftImage(src);
+      } else {
+        setDraftImage('');
+      }
+    });
+    reader.addEventListener('error', () => alert('No se pudo leer la imagen. Intenta con otra.'));
+    reader.readAsDataURL(file);
+  });
+
+  removeImageBtn.addEventListener('click', () => setDraftImage(''));
+
+  function render(){
     const shown = items.filter(item => activeCategory === 'Todas' || item.category === activeCategory);
-
-    grid.innerHTML = shown.map(item => `
-      <article class="item-card">
-        <div class="item-photo">
-          ${item.image ? `<img src="${item.image}" alt="${safe(item.name)}">` : '<div class="item-photo-empty">Sin foto</div>'}
-        </div>
-        <div class="item-body">
-          <h3>${safe(item.name)}</h3>
-          <div class="item-meta"><span>${safe(item.category)}</span></div>
-          <div class="item-actions">
-            <button type="button" class="mini-button" data-action="list" data-id="${item.id}">
-              ${item.inList ? 'Quitar de mi lista' : 'Agregar a mi lista'}
-            </button>
-            <button type="button" class="mini-button" data-action="edit" data-id="${item.id}">Editar</button>
-            <button type="button" class="mini-button danger" data-action="delete" data-id="${item.id}">Eliminar</button>
-          </div>
-        </div>
-      </article>
-    `).join('');
-
+    grid.innerHTML = shown.map(item => `<article class="item-card"><div class="item-card-media">${item.image ? `<img class="item-card-image" src="${safe(item.image)}" alt="${safe(item.name)}">` : ''}</div><div class="item-card-top"><div><div class="item-name">${safe(item.name)}</div><div class="item-category">${safe(item.category)}</div></div></div><div class="item-actions"><button class="small-action ${item.inList ? 'selected' : ''}" data-action="list" data-id="${safe(item.id)}" type="button">${item.inList ? '✓ En mi lista' : '+ Mi lista'}</button><button class="small-action" data-action="edit" data-id="${safe(item.id)}" type="button">Editar</button><button class="small-action remove" data-action="delete" data-id="${safe(item.id)}" type="button">Eliminar</button></div></article>`).join('');
     const hasItems = shown.length > 0;
     empty.classList.toggle('hidden', hasItems);
-
     $('summary').textContent = `${items.length} ${items.length === 1 ? 'elemento' : 'elementos'}`;
     $('itemCount').textContent = items.filter(item => item.inList).length;
     $('activeCaption').textContent = activeCategory === 'Todas' ? 'Explora las categorías de la tienda.' : `Categoría: ${activeCategory}`;
@@ -463,266 +114,82 @@
     $('emptyText').textContent = activeCategory === 'Todas' ? 'Agrega un elemento cuando estés listo y asígnalo a una categoría.' : 'Puedes agregar un elemento directamente a esta categoría.';
     renderList();
   }
-
-  function openAdd(item = null) {
-    ensurePhotoControls();
-
-    const addForm = $('addForm');
-    const imageInput = $('productImageInput');
-    const preview = $('productImagePreview');
-
-    if (addForm) addForm.dataset.editing = item ? item.id : '';
-    if ($('elementName')) $('elementName').value = item ? item.name : '';
-
-    if (select) {
-      select.value = item ? item.category : (activeCategory === 'Todas' ? categories[0] : activeCategory);
-    }
-
-    if (addDialog && addDialog.querySelector('h2')) {
-      addDialog.querySelector('h2').textContent = item ? 'Editar elemento' : 'Agregar elemento';
-    }
-
-    if (addForm && addForm.querySelector('button[type="submit"]')) {
-      addForm.querySelector('button[type="submit"]').textContent = item ? 'Guardar cambios' : 'Guardar elemento';
-    }
-
-    pendingProductImage = item?.image || '';
-
-    if (preview) {
-      preview.src = item?.image || '';
-      preview.classList.toggle('hidden', !item?.image);
-    }
-
-    if (imageInput) {
-      imageInput.value = '';
-    }
-
+  function openAdd(item = null){
+    $('addForm').dataset.editing = item ? item.id : '';
+    $('elementName').value = item ? item.name : '';
+    select.value = item ? item.category : (activeCategory === 'Todas' ? categories[0] : activeCategory);
+    setDraftImage(item ? item.image || '' : '');
+    $('addDialog').querySelector('h2').textContent = item ? 'Editar elemento' : 'Agregar elemento';
+    $('addForm').querySelector('button[type="submit"]').textContent = item ? 'Guardar cambios' : 'Guardar elemento';
     addDialog.showModal();
-    requestAnimationFrame(() => $('elementName')?.focus());
+    requestAnimationFrame(() => $('elementName').focus());
   }
-
-  function closeAdd() {
-    clearPhotoSelection();
-    const addForm = $('addForm');
-    if (addForm) {
-      addForm.dataset.editing = '';
-      const submitBtn = addForm.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.textContent = 'Guardar elemento';
-    }
-    if (addDialog) addDialog.close();
+  function closeAdd(){
+    addDialog.close();
+    setDraftImage('');
+    $('addForm').dataset.editing = '';
   }
-
-  $('openAdd')?.addEventListener('click', () => openAdd());
-  $('emptyAdd')?.addEventListener('click', () => openAdd());
-  $('closeAdd')?.addEventListener('click', closeAdd);
-  $('cancelAdd')?.addEventListener('click', closeAdd);
-
-  $('addForm')?.addEventListener('submit', async event => {
+  const loginDialog = $('loginDialog');
+  $('openLogin').addEventListener('click', () => { $('loginNotice').hidden = true; $('loginNotice').textContent = ''; loginDialog.showModal(); });
+  $('closeLogin').addEventListener('click', () => loginDialog.close());
+  $('cancelLogin').addEventListener('click', () => loginDialog.close());
+  $('loginForm').addEventListener('submit', event => {
     event.preventDefault();
+    $('loginNotice').textContent = 'La pantalla de inicio de sesión está lista, pero aún no está conectada a un sistema de cuentas. No se enviaron ni guardaron tus datos.';
+    $('loginNotice').hidden = false;
+  });
 
+  $('openAdd').addEventListener('click', () => openAdd());
+  $('emptyAdd').addEventListener('click', () => openAdd());
+  $('closeAdd').addEventListener('click', closeAdd);
+  $('cancelAdd').addEventListener('click', closeAdd);
+  $('addForm').addEventListener('submit', event => {
+    event.preventDefault();
     const name = $('elementName').value.trim();
-    if (!name) {
-      $('elementName').focus();
-      return;
-    }
-
+    if(!name) { $('elementName').focus(); return; }
     const editingId = event.currentTarget.dataset.editing;
-
-    const nextItem = {
-      id: editingId || makeId(),
-      name,
-      category: select.value,
-      inList: false,
-      image: pendingProductImage || ''
-    };
-
-    if (editingId) {
-      const item = items.find(x => x.id === editingId);
-      if (item) {
-        item.name = name;
-        item.category = select.value;
-        item.image = pendingProductImage || item.image || '';
-      }
-    } else {
-      items = [...items, nextItem];
-    }
-
-    pendingProductImage = '';
-
-    try {
-      const key = getCurrentCatalogKey();
-      localStorage.setItem(key, JSON.stringify(items));
-      if (!getLoggedUser()) localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch (error) {
-      console.error('No se pudo guardar en localStorage:', error);
-      if (editingId) {
-        const item = items.find(x => x.id === editingId);
-        if (item) item.image = '';
-      } else {
-        items = items.filter(x => x.id !== nextItem.id);
-      }
-      window.alert('No se pudo guardar el producto. La imagen es demasiado grande o el almacenamiento está lleno. Usa una imagen más pequeña.');
-      return;
-    }
-
-    closeAdd();
-    render();
+    const imageToSave = draftImage;
+    if(editingId){ const item = items.find(x => x.id === editingId); if(item){ item.name = name; item.category = select.value; item.image = imageToSave; } }
+    else items.push({id:makeId(),name,category:select.value,inList:false,image:imageToSave});
+    persist(); closeAdd(); render();
   });
 
-  $('categoryBar')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-category]');
-    if (!button) return;
-
+  $('categoryBar').addEventListener('click', event => {
+    const button = event.target.closest('[data-category]'); if(!button) return;
     activeCategory = button.dataset.category;
-    document.querySelectorAll('.category').forEach(el => {
-      const active = el === button;
-      el.classList.toggle('active', active);
-      if (active) el.setAttribute('aria-current', 'true');
-      else el.removeAttribute('aria-current');
-    });
-
-    button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    document.querySelectorAll('.category').forEach(el => { const active = el === button; el.classList.toggle('active', active); if(active) el.setAttribute('aria-current','true'); else el.removeAttribute('aria-current'); });
+    button.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
     render();
   });
-
   const categoryBar = $('categoryBar');
-
-  $('scrollLeft')?.addEventListener('click', () => {
-    categoryBar.scrollBy({
-      left: -Math.max(280, categoryBar.clientWidth * 0.7),
-      behavior: 'smooth'
-    });
-  });
-
-  $('scrollRight')?.addEventListener('click', () => {
-    categoryBar.scrollBy({
-      left: Math.max(280, categoryBar.clientWidth * 0.7),
-      behavior: 'smooth'
-    });
-  });
-
-  categoryBar?.addEventListener('wheel', event => {
-    if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-      categoryBar.scrollLeft += event.deltaY;
-      event.preventDefault();
-    }
-  }, { passive: false });
-
-  $('clearFilter')?.addEventListener('click', () => {
-    const all = document.querySelector('[data-category="Todas"]');
-    all?.click();
-  });
-
-  $('backToTop')?.addEventListener('click', () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+  $('scrollLeft').addEventListener('click', () => categoryBar.scrollBy({left:-Math.max(280,categoryBar.clientWidth*.7),behavior:'smooth'}));
+  $('scrollRight').addEventListener('click', () => categoryBar.scrollBy({left:Math.max(280,categoryBar.clientWidth*.7),behavior:'smooth'}));
+  categoryBar.addEventListener('wheel', event => { if(Math.abs(event.deltaY) > Math.abs(event.deltaX)){ categoryBar.scrollLeft += event.deltaY; event.preventDefault(); } }, {passive:false});
+  $('clearFilter').addEventListener('click', () => { const all = document.querySelector('[data-category="Todas"]'); all.click(); });
+  $('backToTop').addEventListener('click', () => window.scrollTo({top:0,behavior:'smooth'}));
 
   grid.addEventListener('click', event => {
-    const button = event.target.closest('[data-action]');
-    if (!button) return;
-
-    const item = items.find(x => x.id === button.dataset.id);
-    if (!item) return;
-
-    if (button.dataset.action === 'list') {
-      item.inList = !item.inList;
-      persist();
-      render();
-    }
-
-    if (button.dataset.action === 'edit') openAdd(item);
-    if (button.dataset.action === 'delete') askDelete(item);
+    const button = event.target.closest('[data-action]'); if(!button) return;
+    const item = items.find(x => x.id === button.dataset.id); if(!item) return;
+    if(button.dataset.action === 'list'){ item.inList = !item.inList; persist(); render(); }
+    if(button.dataset.action === 'edit') openAdd(item);
+    if(button.dataset.action === 'delete') askDelete(item);
   });
-
-  function renderList() {
+  function renderList(){
     const chosen = items.filter(item => item.inList);
-
-    $('listContents').innerHTML = chosen.length
-      ? chosen.map(item => `
-        <div class="list-row">
-          <div>
-            <strong>${safe(item.name)}</strong>
-            <span>${safe(item.category)}</span>
-          </div>
-          <button type="button" class="mini-button danger" data-unlist="${item.id}">Quitar</button>
-        </div>
-      `).join('')
-      : '<p class="empty-list">Todavía no tienes elementos en tu lista.</p>';
-
+    $('listContents').innerHTML = chosen.length ? chosen.map(item => `<div class="list-row"><div><strong>${safe(item.name)}</strong><span>${safe(item.category)}</span></div><button type="button" class="small-action remove" data-unlist="${safe(item.id)}">Quitar</button></div>`).join('') : '<div class="list-empty">Tu lista está vacía.<br>Marca un elemento con “+ Mi lista” para verlo aquí.</div>';
     $('clearList').disabled = chosen.length === 0;
   }
+  $('openList').addEventListener('click', () => { renderList(); listDialog.showModal(); });
+  $('closeList').addEventListener('click', () => listDialog.close());
+  $('doneList').addEventListener('click', () => listDialog.close());
+  $('listContents').addEventListener('click', event => { const button = event.target.closest('[data-unlist]'); if(!button) return; const item = items.find(x => x.id === button.dataset.unlist); if(item) item.inList = false; persist(); render(); });
+  $('clearList').addEventListener('click', () => { items.forEach(item => item.inList = false); persist(); render(); });
 
-  $('openList')?.addEventListener('click', () => {
-    renderList();
-    listDialog.showModal();
-  });
-
-  $('closeList')?.addEventListener('click', () => listDialog.close());
-  $('doneList')?.addEventListener('click', () => listDialog.close());
-
-  $('listContents')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-unlist]');
-    if (!button) return;
-
-    const item = items.find(x => x.id === button.dataset.unlist);
-    if (!item) return;
-
-    item.inList = false;
-    persist();
-    render();
-  });
-
-  $('clearList')?.addEventListener('click', () => {
-    items.forEach(item => item.inList = false);
-    persist();
-    render();
-  });
-
-  function askDelete(item) {
-    deleteTarget = item.id;
-    $('confirmText').textContent = `Se eliminará “${item.name}” del catálogo.`;
-    confirmDialog.showModal();
-  }
-
-  function closeConfirm() {
-    deleteTarget = null;
-    confirmDialog.close();
-  }
-
-  $('cancelDelete')?.addEventListener('click', closeConfirm);
-  $('cancelDeleteX')?.addEventListener('click', closeConfirm);
-
-  $('confirmDelete')?.addEventListener('click', () => {
-    if (deleteTarget) {
-      items = items.filter(item => item.id !== deleteTarget);
-      persist();
-      render();
-    }
-    closeConfirm();
-  });
-
-  $('changeBackgroundBtn')?.addEventListener('click', () => {
-    $('backgroundInput')?.click();
-  });
-
-  $('backgroundInput')?.addEventListener('change', event => {
-    const input = event.target;
-    const file = input.files && input.files[0];
-    if (!file) return;
-
-    setBackgroundFromFile(file);
-    input.value = '';
-  });
-
-  [addDialog, listDialog, confirmDialog].forEach(dialog => {
-    if (!dialog) return;
-    dialog.addEventListener('click', event => {
-      if (event.target === dialog) dialog.close();
-    });
-  });
-
-  ensureStyles();
-  ensureAuthUi();
-  loadBackground();
+  function askDelete(item){ deleteTarget = item.id; $('confirmText').textContent = `Se eliminará “${item.name}” del catálogo.`; confirmDialog.showModal(); }
+  function closeConfirm(){ deleteTarget = null; confirmDialog.close(); }
+  $('cancelDelete').addEventListener('click', closeConfirm); $('cancelDeleteX').addEventListener('click', closeConfirm);
+  $('confirmDelete').addEventListener('click', () => { if(deleteTarget){ items = items.filter(item => item.id !== deleteTarget); persist(); render(); } closeConfirm(); });
+  [addDialog,loginDialog,listDialog,confirmDialog].forEach(dialog => dialog.addEventListener('click', event => { if(event.target === dialog) dialog.close(); }));
   render();
 })();
