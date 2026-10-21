@@ -320,7 +320,7 @@
 
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
-      if (!(file instanceof File)) {
+      if (!file || typeof file !== 'object' || !('name' in file) || !('size' in file)) {
         reject(new Error('No se seleccionó un archivo válido.'));
         return;
       }
@@ -336,20 +336,29 @@
     });
   }
 
+  function clearPhotoSelection() {
+    pendingProductImage = '';
+    const preview = $('productImagePreview');
+    const input = $('productImageInput');
+
+    if (preview) {
+      preview.removeAttribute('src');
+      preview.classList.add('hidden');
+    }
+
+    if (input) input.value = '';
+  }
+
   function bindPhotoInput() {
     const input = $('productImageInput');
     if (!input) return;
 
     input.onchange = async event => {
-      const file = event.target.files?.[0];
+      const file = event.target && event.target.files ? event.target.files[0] : null;
       const preview = $('productImagePreview');
 
       if (!file) {
-        pendingProductImage = '';
-        if (preview) {
-          preview.src = '';
-          preview.classList.add('hidden');
-        }
+        clearPhotoSelection();
         return;
       }
 
@@ -363,7 +372,7 @@
         }
       } catch (error) {
         console.error(error);
-        pendingProductImage = '';
+        clearPhotoSelection();
       }
     };
   }
@@ -372,8 +381,11 @@
     const addForm = $('addForm');
     if (!addForm) return;
 
-    const alreadyExists = addForm.querySelector('#productImageInput');
-    if (alreadyExists) return;
+    const existing = addForm.querySelector('#productImageInput');
+    if (existing) {
+      bindPhotoInput();
+      return;
+    }
 
     const wrapper = document.createElement('div');
     wrapper.className = 'product-photo-field';
@@ -456,13 +468,22 @@
       preview.classList.toggle('hidden', !item?.image);
     }
 
-    if (imageInput) imageInput.value = '';
+    if (imageInput) {
+      imageInput.value = '';
+    }
 
     addDialog.showModal();
     requestAnimationFrame(() => $('elementName')?.focus());
   }
 
   function closeAdd() {
+    clearPhotoSelection();
+    const addForm = $('addForm');
+    if (addForm) {
+      addForm.dataset.editing = '';
+      const submitBtn = addForm.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.textContent = 'Guardar elemento';
+    }
     if (addDialog) addDialog.close();
   }
 
