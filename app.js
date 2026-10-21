@@ -284,6 +284,34 @@
   }
   categories.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; if (select) select.appendChild(option); });
 
+  function bindPhotoInput(){
+    const input = $('productImageInput');
+    if (!input) return;
+    input.onchange = async event => {
+      const file = event.target.files?.[0];
+      const preview = $('productImagePreview');
+      if (!file) {
+        pendingProductImage = '';
+        if (preview) {
+          preview.src = '';
+          preview.classList.add('hidden');
+        }
+        return;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        pendingProductImage = dataUrl;
+        if (preview) {
+          preview.src = dataUrl;
+          preview.classList.remove('hidden');
+        }
+      } catch (error) {
+        console.error(error);
+        pendingProductImage = '';
+      }
+    };
+  }
+
   function ensurePhotoControls(){
     const addForm = $('addForm');
     if (!addForm || $('productImageInput')) return;
@@ -296,6 +324,7 @@
     `;
     const submitButton = addForm.querySelector('button[type="submit"]');
     if (submitButton) addForm.insertBefore(wrapper, submitButton);
+    bindPhotoInput();
   }
 
   function readFileAsDataUrl(file){
@@ -317,7 +346,7 @@
 
   function render(){
     const shown = items.filter(item => activeCategory === 'Todas' || item.category === activeCategory);
-    grid.innerHTML = shown.map(item => `<article class="item-card"><div class="item-photo">${item.image ? `<img src="${item.image}" alt="${safe(item.name)}">` : '<div class="item-photo-empty">Sin foto</div>'}</div><div class="item-card-top"><div><div class="item-name">${safe(item.name)}</div><div class="item-category">${safe(item.category)}</div></div></div><div class="item-actions"><button class="small-action ${item.inList ? 'selected' : ''}" data-action="list" data-id="${safe(item.id)}" type="button">${item.inList ? '✓ En mi lista' : '+ Mi lista'}</button><button class="small-action" data-action="edit" data-id="${safe(item.id)}" type="button">Editar</button><button class="small-action remove" data-action="delete" data-id="${safe(item.id)}" type="button">Eliminar</button></div></article>`).join('');
+    grid.innerHTML = shown.map(item => `<article class="item-card"><div class="item-photo">${item.image ? `<img src="${item.image}" alt="${safe(item.name)}">` : '<div class="item-photo-empty">Sin foto</div>'}</div><div class="item-body"><h3>${safe(item.name)}</h3><div class="item-meta"><span>${safe(item.category)}</span></div><div class="item-actions"><button type="button" class="mini-button" data-action="list" data-id="${item.id}">${item.inList ? 'Quitar de mi lista' : 'Agregar a mi lista'}</button><button type="button" class="mini-button" data-action="edit" data-id="${item.id}">Editar</button><button type="button" class="mini-button danger" data-action="delete" data-id="${item.id}">Eliminar</button></div></div></article>`).join('');
     const hasItems = shown.length > 0;
     empty.classList.toggle('hidden', hasItems);
     $('summary').textContent = `${items.length} ${items.length === 1 ? 'elemento' : 'elementos'}`;
@@ -352,32 +381,6 @@
   $('emptyAdd')?.addEventListener('click', () => openAdd());
   $('closeAdd')?.addEventListener('click', closeAdd);
   $('cancelAdd')?.addEventListener('click', closeAdd);
-  const productImageInput = $('productImageInput');
-  if (productImageInput) {
-    productImageInput.addEventListener('change', async event => {
-      const file = event.target.files?.[0];
-      const preview = $('productImagePreview');
-      if (!file) {
-        pendingProductImage = '';
-        if (preview) {
-          preview.src = '';
-          preview.classList.add('hidden');
-        }
-        return;
-      }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        pendingProductImage = dataUrl;
-        if (preview) {
-          preview.src = dataUrl;
-          preview.classList.remove('hidden');
-        }
-      } catch (error) {
-        console.error(error);
-        pendingProductImage = '';
-      }
-    });
-  }
   $('addForm')?.addEventListener('submit', async event => {
     event.preventDefault();
     const name = $('elementName').value.trim();
@@ -422,7 +425,11 @@
   $('categoryBar')?.addEventListener('click', event => {
     const button = event.target.closest('[data-category]'); if(!button) return;
     activeCategory = button.dataset.category;
-    document.querySelectorAll('.category').forEach(el => { const active = el === button; el.classList.toggle('active', active); if(active) el.setAttribute('aria-current','true'); else el.removeAttribute('aria-current'); });
+    document.querySelectorAll('.category').forEach(el => {
+      const active = el === button;
+      el.classList.toggle('active', active);
+      if (active) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+    });
     button.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
     render();
   });
@@ -430,7 +437,7 @@
   $('scrollLeft')?.addEventListener('click', () => categoryBar.scrollBy({left:-Math.max(280,categoryBar.clientWidth*.7),behavior:'smooth'}));
   $('scrollRight')?.addEventListener('click', () => categoryBar.scrollBy({left:Math.max(280,categoryBar.clientWidth*.7),behavior:'smooth'}));
   categoryBar?.addEventListener('wheel', event => { if(Math.abs(event.deltaY) > Math.abs(event.deltaX)){ categoryBar.scrollLeft += event.deltaY; event.preventDefault(); } }, {passive:false});
-  $('clearFilter')?.addEventListener('click', () => { const all = document.querySelector('[data-category="Todas"]'); all.click(); });
+  $('clearFilter')?.addEventListener('click', () => { const all = document.querySelector('[data-category="Todas"]'); all?.click(); });
   $('backToTop')?.addEventListener('click', () => window.scrollTo({top:0,behavior:'smooth'}));
 
   grid.addEventListener('click', event => {
@@ -442,13 +449,21 @@
   });
   function renderList(){
     const chosen = items.filter(item => item.inList);
-    $('listContents').innerHTML = chosen.length ? chosen.map(item => `<div class="list-row"><div><strong>${safe(item.name)}</strong><span>${safe(item.category)}</span></div><button type="button" class="small-action remove" data-unlist="${safe(item.id)}">Quitar</button></div>`).join('') : '<div class="list-empty">Tu lista está vacía.<br>Marca un elemento con “+ Mi lista” para verlo aquí.</div>';
+    $('listContents').innerHTML = chosen.length ? chosen.map(item => `<div class="list-row"><div><strong>${safe(item.name)}</strong><span>${safe(item.category)}</span></div><button type="button" class="mini-button danger" data-unlist="${item.id}">Quitar</button></div>`).join('') : '<p class="empty-list">Todavía no tienes elementos en tu lista.</p>';
     $('clearList').disabled = chosen.length === 0;
   }
   $('openList')?.addEventListener('click', () => { renderList(); listDialog.showModal(); });
   $('closeList')?.addEventListener('click', () => listDialog.close());
   $('doneList')?.addEventListener('click', () => listDialog.close());
-  $('listContents')?.addEventListener('click', event => { const button = event.target.closest('[data-unlist]'); if(!button) return; const item = items.find(x => x.id === button.dataset.unlist); if(item) item.inList = false; persist(); render(); });
+  $('listContents')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-unlist]');
+    if(!button) return;
+    const item = items.find(x => x.id === button.dataset.unlist);
+    if(!item) return;
+    item.inList = false;
+    persist();
+    render();
+  });
   $('clearList')?.addEventListener('click', () => { items.forEach(item => item.inList = false); persist(); render(); });
 
   function askDelete(item){ deleteTarget = item.id; $('confirmText').textContent = `Se eliminará “${item.name}” del catálogo.`; confirmDialog.showModal(); }
