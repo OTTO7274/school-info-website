@@ -1,40 +1,27 @@
-body{
-    margin:0;
-    background-color:var(--page);
-    background-image:none;
-    background-size:cover;
-    background-position:center;
-    background-repeat:no-repeat;
-    background-attachment:fixed;
-    color:var(--ink);
-    font-family: var(--font-main);
-    -webkit-font-smoothing:antialiased;
-    text-shadow: 0 0 1px rgba(0,0,0,.18);
+
+.segment-block{
+    margin-bottom: 24px;
 }
 
-.brand,
-.brand-name,
-.catalog-heading h1,
-.dialog h2,
-.eyebrow,
-.heading-caption,
-.item-name,
-.item-category,
-.item-summary,
-.button,
-.category,
-.page-footer,
-.list-row strong,
-.list-row span,
-.login-notice,
-.empty-state h2,
-.empty-state p,
-.dialog label,
-.dialog input,
-.dialog select,
-.form-note,
-.dialog-subtitle,
-.list-empty {
-    -webkit-text-stroke: 0.35px rgba(25,25,25,.38);
-    text-shadow: 0 1px 0 rgba(0,0,0,.18), 0 0 2px rgba(0,0,0,.12);
+.segment-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin:0 0 14px;
+    padding-bottom:8px;
+    border-bottom:1px solid #ececec;
+}
+
+.segment-title{
+    margin:0;
+    font-size:18px;
+    letter-spacing:-0.4px;
+    color:#1d1d1d;
+}
+
+.segment-header span{
+    color:#666;
+    font-size:12px;
+    font-weight:700;
 }

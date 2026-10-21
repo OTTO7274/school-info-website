@@ -101,11 +101,40 @@
 
   removeImageBtn.addEventListener('click', () => setDraftImage(''));
 
+  function renderCard(item){
+    return `<article class="item-card"><div class="item-card-media">${item.image ? `<img class="item-card-image" src="${safe(item.image)}" alt="${safe(item.name)}">` : ''}</div><div class="item-card-top"><div><div class="item-name">${safe(item.name)}</div><div class="item-category">${safe(item.category)}</div></div></div><div class="item-actions"><button class="small-action ${item.inList ? 'selected' : ''}" data-action="list" data-id="${safe(item.id)}" type="button">${item.inList ? '✓ En mi lista' : '+ Mi lista'}</button><button class="small-action" data-action="edit" data-id="${safe(item.id)}" type="button">Editar</button><button class="small-action remove" data-action="delete" data-id="${safe(item.id)}" type="button">Eliminar</button></div></article>`;
+  }
+
   function render(){
     const shown = items.filter(item => activeCategory === 'Todas' || item.category === activeCategory);
-    grid.innerHTML = shown.map(item => `<article class="item-card"><div class="item-card-media">${item.image ? `<img class="item-card-image" src="${safe(item.image)}" alt="${safe(item.name)}">` : ''}</div><div class="item-card-top"><div><div class="item-name">${safe(item.name)}</div><div class="item-category">${safe(item.category)}</div></div></div><div class="item-actions"><button class="small-action ${item.inList ? 'selected' : ''}" data-action="list" data-id="${safe(item.id)}" type="button">${item.inList ? '✓ En mi lista' : '+ Mi lista'}</button><button class="small-action" data-action="edit" data-id="${safe(item.id)}" type="button">Editar</button><button class="small-action remove" data-action="delete" data-id="${safe(item.id)}" type="button">Eliminar</button></div></article>`).join('');
-    const hasItems = shown.length > 0;
-    empty.classList.toggle('hidden', hasItems);
+    const hasVisibleItems = shown.length > 0;
+    empty.classList.toggle('hidden', hasVisibleItems);
+
+    if (!hasVisibleItems) {
+      grid.innerHTML = '';
+    } else if (activeCategory === 'Todas') {
+      const segmentMarkup = categories.map(categoryName => {
+        const categoryItems = items.filter(item => item.category === categoryName);
+        if (!categoryItems.length) return '';
+        return `<section class="segment-block">
+          <div class="segment-header">
+            <h2 class="segment-title">${safe(categoryName)}</h2>
+            <span>${categoryItems.length} ${categoryItems.length === 1 ? 'elemento' : 'elementos'}</span>
+          </div>
+          <div class="items-grid">${categoryItems.map(renderCard).join('')}</div>
+        </section>`;
+      }).join('');
+      grid.innerHTML = segmentMarkup;
+    } else {
+      grid.innerHTML = `<section class="segment-block">
+        <div class="segment-header">
+          <h2 class="segment-title">${safe(activeCategory)}</h2>
+          <span>${shown.length} ${shown.length === 1 ? 'elemento' : 'elementos'}</span>
+        </div>
+        <div class="items-grid">${shown.map(renderCard).join('')}</div>
+      </section>`;
+    }
+
     $('summary').textContent = `${items.length} ${items.length === 1 ? 'elemento' : 'elementos'}`;
     $('itemCount').textContent = items.filter(item => item.inList).length;
     $('activeCaption').textContent = activeCategory === 'Todas' ? 'Explora las categorías de la tienda.' : `Categoría: ${activeCategory}`;
